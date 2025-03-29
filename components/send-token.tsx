@@ -34,6 +34,24 @@ interface TokenInfo {
   name?: string
 }
 
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
+
+const parseMetadataData = (data: Buffer) => {
+  // Skip first byte (key)
+  let offset = 1
+  
+  // Read name (32 bytes)
+  const nameBytes = data.slice(offset, offset + 32)
+  const name = new TextDecoder().decode(nameBytes).replace(/\0/g, '')
+  offset += 32
+
+  // Read symbol (10 bytes)
+  const symbolBytes = data.slice(offset, offset + 10)
+  const symbol = new TextDecoder().decode(symbolBytes).replace(/\0/g, '')
+
+  return { name, symbol }
+}
+
 export default function SendToken() {
   const { publicKey, signTransaction } = useWallet()
   const { connection } = useConnection()
@@ -70,42 +88,36 @@ export default function SendToken() {
           // Get mint info to get decimals
           const mintInfo = await getMint(connection, new PublicKey(mintAddress))
 
-          // Try to get token metadata if available
+          // Get token metadata
+          const [metadataAddress] = PublicKey.findProgramAddressSync(
+            [
+              Buffer.from("metadata"),
+              TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+              new PublicKey(mintAddress).toBuffer(),
+            ],
+            TOKEN_METADATA_PROGRAM_ID
+          )
+
           let name = undefined
           let symbol = undefined
 
           try {
-            // This is a simplified approach - in a production app, you'd want to fetch
-            // metadata from the Metaplex Token Metadata Program
-            const tokenMetadata = await connection.getAccountInfo(new PublicKey(mintAddress))
-            if (tokenMetadata && tokenMetadata.data.length > 0) {
-              // Extract name and symbol if available
-              // This is a simplified approach and might not work for all tokens
-              const dataString = new TextDecoder().decode(tokenMetadata.data)
-              if (dataString.includes("name")) {
-                const nameMatch = dataString.match(/"name"\s*:\s*"([^"]+)"/)
-                if (nameMatch && nameMatch[1]) {
-                  name = nameMatch[1]
-                }
-              }
-              if (dataString.includes("symbol")) {
-                const symbolMatch = dataString.match(/"symbol"\s*:\s*"([^"]+)"/)
-                if (symbolMatch && symbolMatch[1]) {
-                  symbol = symbolMatch[1]
-                }
-              }
+            const metadataAccount = await connection.getAccountInfo(metadataAddress)
+            if (metadataAccount && metadataAccount.data.length > 0) {
+              const { name: metadataName, symbol: metadataSymbol } = parseMetadataData(metadataAccount.data)
+              name = metadataName
+              symbol = metadataSymbol
             }
           } catch (error) {
             console.log("Could not fetch token metadata:", error)
-            // Continue without metadata
           }
 
           return {
             mint: mintAddress,
             balance: balance.toString(),
             decimals: mintInfo.decimals,
-            name,
-            symbol,
+            name: name || shortenAddress(mintAddress),
+            symbol: symbol || mintAddress.slice(0, 4),
           } as TokenInfo
         } catch (error) {
           console.error(`Error fetching mint info for ${mintAddress}:`, error)

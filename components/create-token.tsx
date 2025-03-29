@@ -16,18 +16,13 @@ import { Keypair, SystemProgram, Transaction } from "@solana/web3.js"
 import { CardContent, CardDescription, CardHeader, CardTitle, Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Coins, ArrowRight, Info, Copy, CheckCircle2, AlertCircle } from "lucide-react"
+import { Coins, ArrowRight, Info, Copy, CheckCircle2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { AnimatedButton } from "@/components/ui/animated-button"
 import { AnimatedCard } from "@/components/ui/animated-card"
 import { TransactionStatus } from "@/components/ui/transaction-status"
 import { Confetti } from "@/components/ui/confetti"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 export default function CreateToken() {
@@ -47,6 +42,7 @@ export default function CreateToken() {
   const [statusMessage, setStatusMessage] = useState("")
   const [showConfetti, setShowConfetti] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [tokenDetails, setTokenDetails] = useState<{ name: string; symbol: string }>({ name: "", symbol: "" })
 
   const handleCreateToken = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,6 +51,25 @@ export default function CreateToken() {
       toast({
         title: "Wallet not connected",
         description: "Please connect your wallet to create a token",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validate inputs
+    if (!name.trim()) {
+      toast({
+        title: "Invalid token name",
+        description: "Please enter a valid token name",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!symbol.trim()) {
+      toast({
+        title: "Invalid token symbol",
+        description: "Please enter a valid token symbol",
         variant: "destructive",
       })
       return
@@ -129,6 +144,7 @@ export default function CreateToken() {
       transaction.add(createMintAccountIx)
       transaction.add(initializeMintIx)
       transaction.add(createAssociatedTokenAccountIx)
+
       if (mintToIx) {
         transaction.add(mintToIx)
       }
@@ -167,13 +183,14 @@ export default function CreateToken() {
 
       // Success!
       setCreatedTokenMint(mintKeypair.publicKey.toString())
+      setTokenDetails({ name, symbol })
       setTransactionStatus("success")
       setStatusMessage(`Token ${symbol || "Token"} created successfully!`)
       setShowConfetti(true)
 
       toast({
         title: "Token created successfully",
-        description: `Your token ${symbol || "Token"} has been created with mint address: ${mintKeypair.publicKey.toString()}`,
+        description: `Your token ${name} (${symbol}) has been created with mint address: ${mintKeypair.publicKey.toString()}`,
       })
     } catch (error) {
       console.error("Error creating token:", error)
@@ -218,13 +235,15 @@ export default function CreateToken() {
           <CardContent>
             {transactionStatus !== "idle" && (
               <div className="mb-6">
-                <Card className={cn(
-                  "p-4 border transition-colors duration-200",
-                  transactionStatus === "processing" && "border-yellow-600/50 bg-yellow-900/10",
-                  transactionStatus === "success" && "border-green-600/50 bg-green-900/10",
-                  transactionStatus === "error" && "border-red-600/50 bg-red-900/10",
-                  transactionStatus === "warning" && "border-orange-600/50 bg-orange-900/10"
-                )}>
+                <Card
+                  className={cn(
+                    "p-4 border transition-colors duration-200",
+                    transactionStatus === "processing" && "border-yellow-600/50 bg-yellow-900/10",
+                    transactionStatus === "success" && "border-green-600/50 bg-green-900/10",
+                    transactionStatus === "error" && "border-red-600/50 bg-red-900/10",
+                    transactionStatus === "warning" && "border-orange-600/50 bg-orange-900/10",
+                  )}
+                >
                   <TransactionStatus status={transactionStatus} message={statusMessage} />
                 </Card>
               </div>
@@ -237,8 +256,19 @@ export default function CreateToken() {
                     <CheckCircle2 className="h-6 w-6 text-green-500" />
                     <h3 className="text-xl font-semibold text-green-400">Token Created Successfully!</h3>
                   </div>
-                  
+
                   <div className="space-y-4">
+                    <div className="space-y-3">
+                      <div>
+                        <span className="text-sm text-gray-400">Token Name</span>
+                        <p className="text-white font-medium">{tokenDetails.name}</p>
+                      </div>
+                      <div>
+                        <span className="text-sm text-gray-400">Token Symbol</span>
+                        <p className="text-white font-medium">{tokenDetails.symbol}</p>
+                      </div>
+                    </div>
+
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm text-gray-400">Token Mint Address</span>
@@ -246,11 +276,7 @@ export default function CreateToken() {
                           onClick={() => copyToClipboard(createdTokenMint)}
                           className="flex items-center space-x-1 text-xs text-purple-400 hover:text-purple-300 transition-colors"
                         >
-                          {copied ? (
-                            <CheckCircle2 className="h-4 w-4" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
+                          {copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                           <span>{copied ? "Copied!" : "Copy"}</span>
                         </button>
                       </div>
@@ -258,7 +284,7 @@ export default function CreateToken() {
                         {createdTokenMint}
                       </div>
                     </div>
-                    
+
                     <div className="bg-purple-900/20 border border-purple-500/20 rounded-lg p-4">
                       <h4 className="text-sm font-medium text-purple-400 mb-2">Next Steps</h4>
                       <ul className="text-sm text-gray-400 space-y-2">
@@ -296,7 +322,9 @@ export default function CreateToken() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="name" className="text-gray-200">Token Name</Label>
+                      <Label htmlFor="name" className="text-gray-200">
+                        Token Name
+                      </Label>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger>
@@ -320,7 +348,9 @@ export default function CreateToken() {
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="symbol" className="text-gray-200">Token Symbol</Label>
+                      <Label htmlFor="symbol" className="text-gray-200">
+                        Token Symbol
+                      </Label>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger>
@@ -346,7 +376,9 @@ export default function CreateToken() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <Label htmlFor="decimals" className="text-gray-200">Decimals</Label>
+                        <Label htmlFor="decimals" className="text-gray-200">
+                          Decimals
+                        </Label>
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger>
@@ -373,7 +405,9 @@ export default function CreateToken() {
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <Label htmlFor="initialSupply" className="text-gray-200">Initial Supply</Label>
+                        <Label htmlFor="initialSupply" className="text-gray-200">
+                          Initial Supply
+                        </Label>
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger>
