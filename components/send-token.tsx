@@ -12,21 +12,30 @@ import {
   getMint,
 } from "@solana/spl-token"
 import { PublicKey, Transaction } from "@solana/web3.js"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle, Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, SendHorizontal } from "lucide-react"
+import { Loader2, SendHorizontal, Info, ArrowRight, Copy, CheckCircle2, Coins } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { AnimatedButton } from "@/components/ui/animated-button"
 import { AnimatedCard } from "@/components/ui/animated-card"
 import { TransactionStatus } from "@/components/ui/transaction-status"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
 import { Signer } from "@solana/web3.js"
 
 interface TokenInfo {
   mint: string
   balance: string
   decimals: number
+  symbol?: string
+  name?: string
 }
 
 export default function SendToken() {
@@ -40,10 +49,9 @@ export default function SendToken() {
   const [amount, setAmount] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingTokens, setIsLoadingTokens] = useState(false)
-  const [transactionStatus, setTransactionStatus] = useState<"idle" | "processing" | "success" | "error" | "warning">(
-    "idle",
-  )
+  const [transactionStatus, setTransactionStatus] = useState<"idle" | "processing" | "success" | "error" | "warning">("idle")
   const [statusMessage, setStatusMessage] = useState("")
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const fetchTokens = async () => {
@@ -230,93 +238,204 @@ export default function SendToken() {
   }
 
   const shortenAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`
+    return `${address.slice(0, 4)}...${address.slice(-4)}`
   }
 
+  const copyToClipboard = async (text: string) => {
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const selectedTokenInfo = tokens.find(token => token.mint === selectedToken)
+
   return (
-    <AnimatedCard>
-      <CardHeader>
-        <CardTitle>Send Tokens</CardTitle>
-        <CardDescription>Send tokens to another wallet</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {transactionStatus !== "idle" && (
-          <div className="mb-6">
-            <TransactionStatus status={transactionStatus} message={statusMessage} />
-          </div>
-        )}
+    <TooltipProvider>
+      <div className="max-w-2xl mx-auto p-4">
+        <AnimatedCard className="backdrop-blur-xl bg-black/40 border-purple-500/20">
+          <CardHeader className="space-y-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-600 bg-clip-text text-transparent">
+                Send Tokens
+              </CardTitle>
+              <div className="flex items-center space-x-2 text-sm text-gray-400">
+                <span className="px-2 py-1 rounded-full bg-purple-900/30 border border-purple-700/30">
+                  Solana Devnet
+                </span>
+              </div>
+            </div>
+            <CardDescription className="text-gray-400">
+              Send your SPL tokens to any Solana wallet
+            </CardDescription>
+          </CardHeader>
 
-        {isLoadingTokens ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
-          </div>
-        ) : tokens.length === 0 ? (
-          <div className="text-center py-8 animate-in fade-in-50">
-            <p className="text-gray-400 mb-4">You don't have any tokens to send.</p>
-            <p className="text-gray-400">Create a token first to be able to send tokens.</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSendToken} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="token">Select Token</Label>
-              <Select value={selectedToken} onValueChange={setSelectedToken}>
-                <SelectTrigger className="bg-gray-900 border-gray-700 transition-all focus:border-purple-500 focus:ring-purple-500/20">
-                  <SelectValue placeholder="Select a token" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tokens.map((token) => (
-                    <SelectItem key={token.mint} value={token.mint}>
-                      <div className="flex justify-between w-full">
-                        <span>{shortenAddress(token.mint)}</span>
-                        <span className="text-gray-400">Balance: {token.balance}</span>
+          <CardContent>
+            {transactionStatus !== "idle" && (
+              <div className="mb-6">
+                <Card className={cn(
+                  "p-4 border transition-colors duration-200",
+                  transactionStatus === "processing" && "border-yellow-600/50 bg-yellow-900/10",
+                  transactionStatus === "success" && "border-green-600/50 bg-green-900/10",
+                  transactionStatus === "error" && "border-red-600/50 bg-red-900/10",
+                  transactionStatus === "warning" && "border-orange-600/50 bg-orange-900/10"
+                )}>
+                  <TransactionStatus status={transactionStatus} message={statusMessage} />
+                </Card>
+              </div>
+            )}
+
+            {isLoadingTokens ? (
+              <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+                <p className="text-gray-400">Loading your tokens...</p>
+              </div>
+            ) : tokens.length === 0 ? (
+              <div className="text-center py-12 space-y-4 animate-in fade-in-50">
+                <div className="flex justify-center">
+                  <Coins className="h-12 w-12 text-purple-500/50" />
+                </div>
+                <div>
+                  <p className="text-gray-400 mb-2">You don't have any tokens to send.</p>
+                  <p className="text-gray-500">Create or receive tokens first to be able to send them.</p>
+                </div>
+                <AnimatedButton
+                  onClick={() => window.location.href = '/create'}
+                  className="bg-purple-600 hover:bg-purple-700 transition-colors"
+                  icon={<ArrowRight className="h-4 w-4" />}
+                >
+                  Create a Token
+                </AnimatedButton>
+              </div>
+            ) : (
+              <form onSubmit={handleSendToken} className="space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="token" className="text-gray-200">Select Token</Label>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Info className="h-4 w-4 text-gray-400" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Choose a token from your wallet to send</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <Select value={selectedToken} onValueChange={setSelectedToken}>
+                      <SelectTrigger className="bg-black/40 border-purple-500/20 transition-all focus:border-purple-500 focus:ring-purple-500/20">
+                        <SelectValue placeholder="Select a token" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tokens.map((token) => (
+                          <SelectItem key={token.mint} value={token.mint}>
+                            <div className="flex justify-between w-full items-center">
+                              <div className="flex items-center space-x-2">
+                                <span className="font-medium">{token.symbol || token.mint.slice(0, 4)}</span>
+                                <span className="text-gray-400 text-sm">
+                                  {token.name || shortenAddress(token.mint)}
+                                </span>
+                              </div>
+                              <span className="text-purple-400">Balance: {token.balance}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="recipient" className="text-gray-200">Recipient Address</Label>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Info className="h-4 w-4 text-gray-400" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>The Solana wallet address to send tokens to</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <Input
+                      id="recipient"
+                      placeholder="Enter Solana address"
+                      value={recipientAddress}
+                      onChange={(e) => setRecipientAddress(e.target.value)}
+                      required
+                      className="font-mono text-sm bg-black/40 border-purple-500/20 transition-all focus:border-purple-500 focus:ring-purple-500/20"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="amount" className="text-gray-200">Amount</Label>
+                      <div className="flex items-center space-x-2">
+                        {selectedTokenInfo && (
+                          <button
+                            type="button"
+                            onClick={() => setAmount(selectedTokenInfo.balance)}
+                            className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                          >
+                            MAX
+                          </button>
+                        )}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Info className="h-4 w-4 text-gray-400" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Amount of tokens to send</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                    </div>
+                    <Input
+                      id="amount"
+                      type="number"
+                      placeholder="Enter amount"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      min="0"
+                      step="0.000001"
+                      required
+                      className="bg-black/40 border-purple-500/20 transition-all focus:border-purple-500 focus:ring-purple-500/20"
+                    />
+                    {selectedTokenInfo && (
+                      <p className="text-sm text-gray-400 mt-1">
+                        Balance: {selectedTokenInfo.balance} {selectedTokenInfo.symbol || 'tokens'}
+                      </p>
+                    )}
+                  </div>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="recipient">Recipient Address</Label>
-              <Input
-                id="recipient"
-                placeholder="Solana address"
-                value={recipientAddress}
-                onChange={(e) => setRecipientAddress(e.target.value)}
-                required
-                className="bg-gray-900 border-gray-700 font-mono text-sm transition-all focus:border-purple-500 focus:ring-purple-500/20"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="amount">Amount</Label>
-              <Input
-                id="amount"
-                type="number"
-                placeholder="100"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                min="0"
-                step="0.000001"
-                required
-                className="bg-gray-900 border-gray-700 transition-all focus:border-purple-500 focus:ring-purple-500/20"
-              />
-            </div>
-
-            <AnimatedButton
-              type="submit"
-              className="w-full bg-purple-600 hover:bg-purple-700"
-              disabled={isLoading || !selectedToken || !recipientAddress}
-              isLoading={isLoading}
-              loadingText="Sending Tokens..."
-              icon={<SendHorizontal className="h-4 w-4" />}
-            >
-              Send Tokens
-            </AnimatedButton>
-          </form>
-        )}
-      </CardContent>
-    </AnimatedCard>
+                <div className="pt-4">
+                  <AnimatedButton
+                    type="submit"
+                    className="w-full bg-purple-600 hover:bg-purple-700 transition-colors"
+                    disabled={isLoading || !selectedToken || !recipientAddress || !amount || !publicKey}
+                    isLoading={isLoading}
+                    loadingText="Sending Tokens..."
+                    icon={<SendHorizontal className="h-4 w-4" />}
+                  >
+                    {publicKey 
+                      ? (selectedToken && recipientAddress && amount 
+                        ? "Send Tokens" 
+                        : "Fill in all fields")
+                      : "Connect Wallet to Send Tokens"
+                    }
+                  </AnimatedButton>
+                </div>
+              </form>
+            )}
+          </CardContent>
+        </AnimatedCard>
+      </div>
+    </TooltipProvider>
   )
 }
 
