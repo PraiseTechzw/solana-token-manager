@@ -1,155 +1,170 @@
 "use client"
 
 import { useWallet, useConnection } from "@solana/wallet-adapter-react"
-import { Loader2, RefreshCw, Copy, LogOut } from "lucide-react"
-import { CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { useToast } from "@/components/ui/use-toast"
+import { useState, useEffect } from "react"
 import { LAMPORTS_PER_SOL } from "@solana/web3.js"
-import { useState } from "react"
-import { AnimatedCard } from "@/components/ui/animated-card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Loader2, Copy, CheckCircle2, ExternalLink, Wallet, RefreshCw } from "lucide-react"
 import { AnimatedButton } from "@/components/ui/animated-button"
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui"
+import { useToast } from "@/components/ui/use-toast"
+import { cn } from "@/lib/utils"
 
-interface WalletInfoProps {
-  balance: number | null
-  isLoading: boolean
-}
-
-export default function WalletInfo({ balance, isLoading }: WalletInfoProps) {
-  const { publicKey, disconnect } = useWallet()
+export default function WalletInfo() {
+  const { publicKey } = useWallet()
   const { connection } = useConnection()
   const { toast } = useToast()
-  const [requestingAirdrop, setRequestingAirdrop] = useState(false)
-  const [copyAnimation, setCopyAnimation] = useState(false)
 
-  const copyAddress = () => {
+  const [balance, setBalance] = useState<number | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  useEffect(() => {
+    if (publicKey) {
+      fetchBalance()
+    } else {
+      setBalance(null)
+    }
+  }, [publicKey, connection])
+
+  const fetchBalance = async () => {
     if (!publicKey) return
-
-    navigator.clipboard.writeText(publicKey.toString())
-    setCopyAnimation(true)
-    setTimeout(() => setCopyAnimation(false), 1000)
-
-    toast({
-      title: "Address copied",
-      description: "Wallet address copied to clipboard",
-    })
-  }
-
-  const handleDisconnect = () => {
-    disconnect().catch((error) => {
-      console.error("Error disconnecting wallet:", error)
-      toast({
-        title: "Error disconnecting",
-        description: "Could not disconnect wallet",
-        variant: "destructive",
-      })
-    })
-  }
-
-  const requestAirdrop = async () => {
-    if (!publicKey) return
-
+    setIsLoading(true)
     try {
-      setRequestingAirdrop(true)
-      const signature = await connection.requestAirdrop(publicKey, 2 * LAMPORTS_PER_SOL)
-      await connection.confirmTransaction(signature, "confirmed")
-
-      toast({
-        title: "Airdrop successful",
-        description: "2 SOL has been added to your wallet",
-      })
-
-      // Force refresh the page to update balance
-      window.location.reload()
+      const balance = await connection.getBalance(publicKey)
+      setBalance(balance / LAMPORTS_PER_SOL)
     } catch (error) {
-      console.error("Error requesting airdrop:", error)
+      console.error("Error fetching balance:", error)
       toast({
-        title: "Airdrop failed",
-        description: "Could not request SOL from faucet. Try again later.",
+        title: "Error fetching balance",
+        description: "Could not retrieve your wallet balance",
         variant: "destructive",
       })
     } finally {
-      setRequestingAirdrop(false)
+      setIsLoading(false)
     }
   }
 
-  const shortenAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`
+  const refreshBalance = async () => {
+    setIsRefreshing(true)
+    await fetchBalance()
+    setIsRefreshing(false)
+  }
+
+  const copyAddress = async () => {
+    if (!publicKey) return
+    await navigator.clipboard.writeText(publicKey.toString())
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const openExplorer = () => {
+    if (!publicKey) return
+    window.open(`https://explorer.solana.com/address/${publicKey.toString()}?cluster=devnet`, '_blank')
   }
 
   return (
-    <AnimatedCard>
-      <CardContent className="p-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h2 className="text-lg font-medium text-gray-200 mb-1">Connected Wallet</h2>
-            <div className="flex items-center gap-2">
-              <p className="text-sm text-gray-400">
-                {publicKey ? shortenAddress(publicKey.toString()) : "No wallet connected"}
-              </p>
-              {publicKey && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`h-6 text-xs text-gray-400 hover:text-white transition-all ${copyAnimation ? "scale-110 text-green-400" : ""}`}
-                  onClick={copyAddress}
-                >
-                  <Copy className={`h-3 w-3 mr-1 ${copyAnimation ? "text-green-400" : ""}`} />
-                  {copyAnimation ? "Copied!" : "Copy"}
-                </Button>
-              )}
-            </div>
+    <Card className="backdrop-blur-xl bg-black/40 border-purple-500/20">
+      <CardHeader className="space-y-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-600 bg-clip-text text-transparent flex items-center gap-2">
+            <Wallet className="h-5 w-5" />
+            Wallet Info
+          </CardTitle>
+          <div className="flex items-center space-x-2 text-sm text-gray-400">
+            <span className="px-2 py-1 rounded-full bg-purple-900/30 border border-purple-700/30">
+              Solana Devnet
+            </span>
           </div>
-
-          <div className="flex items-center gap-4">
-            <div className="bg-gray-700 rounded-lg px-4 py-2 transition-all duration-300 hover:shadow-md hover:shadow-purple-500/10">
-              <p className="text-sm text-gray-400">SOL Balance</p>
-              <p className="text-xl font-bold">
-                {isLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : balance !== null ? (
-                  `${balance.toFixed(4)} SOL`
-                ) : (
-                  "N/A"
-                )}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <div className="flex gap-2">
-                <AnimatedButton
-                  variant="outline"
-                  size="sm"
-                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                  onClick={handleDisconnect}
-                  icon={<LogOut className="h-3 w-3" />}
-                >
-                  Disconnect
-                </AnimatedButton>
-
-                <WalletMultiButton className="!bg-purple-600 hover:!bg-purple-700 transition-colors !rounded-lg !shadow-lg !shadow-purple-500/20 !h-9 !px-3 !py-0 !text-sm">
-                  Switch Wallet
-                </WalletMultiButton>
+        </div>
+        <CardDescription className="text-gray-400">
+          View your wallet details and balance
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!publicKey ? (
+          <div className="text-center py-6">
+            <p className="text-gray-400">Connect your wallet to view details</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-400">Wallet Address</span>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={copyAddress}
+                      className="flex items-center space-x-1 text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                    >
+                      {copied ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                      <span>{copied ? "Copied!" : "Copy"}</span>
+                    </button>
+                    <button
+                      onClick={openExplorer}
+                      className="flex items-center space-x-1 text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      <span>Explorer</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="font-mono text-sm bg-black/40 p-3 rounded-lg border border-purple-500/20 break-all">
+                  {publicKey.toString()}
+                </div>
               </div>
 
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-400">SOL Balance</span>
+                  <button
+                    onClick={refreshBalance}
+                    disabled={isRefreshing}
+                    className="flex items-center space-x-1 text-xs text-purple-400 hover:text-purple-300 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+                <div className="bg-black/40 p-3 rounded-lg border border-purple-500/20">
+                  {isLoading ? (
+                    <div className="flex items-center justify-center py-1">
+                      <Loader2 className="h-5 w-5 animate-spin text-purple-500" />
+                    </div>
+                  ) : (
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-xl font-semibold text-white">
+                        {balance === null ? "—" : balance.toFixed(4)}
+                      </span>
+                      <span className="text-sm text-gray-400">SOL</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <AnimatedButton
-                variant="outline"
-                size="sm"
-                className="border-purple-600 text-purple-400 hover:bg-purple-900/30"
-                onClick={requestAirdrop}
-                disabled={requestingAirdrop || !publicKey}
-                isLoading={requestingAirdrop}
-                loadingText="Requesting..."
-                icon={<RefreshCw className="h-3 w-3" />}
+                onClick={() => window.open("https://solfaucet.com", '_blank')}
+                className="bg-purple-600 hover:bg-purple-700 transition-colors text-sm"
               >
                 Get Devnet SOL
               </AnimatedButton>
+              <AnimatedButton
+                onClick={openExplorer}
+                className="bg-gray-800 hover:bg-gray-700 transition-colors text-sm"
+              >
+                View Transactions
+              </AnimatedButton>
             </div>
           </div>
-        </div>
+        )}
       </CardContent>
-    </AnimatedCard>
+    </Card>
   )
 }
 
