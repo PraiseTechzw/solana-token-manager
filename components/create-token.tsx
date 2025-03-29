@@ -3,9 +3,16 @@
 import type React from "react"
 import { useState } from "react"
 import { useWallet, useConnection } from "@solana/wallet-adapter-react"
-import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token"
-import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js"
-import { Signer } from "@solana/web3.js"
+import {
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  createInitializeMintInstruction,
+  createAssociatedTokenAccountInstruction,
+  createMintToInstruction,
+  getAssociatedTokenAddress,
+  getMint,
+} from "@solana/spl-token"
+import { Keypair, SystemProgram, Transaction } from "@solana/web3.js"
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,7 +24,7 @@ import { TransactionStatus } from "@/components/ui/transaction-status"
 import { Confetti } from "@/components/ui/confetti"
 
 export default function CreateToken() {
-  const { publicKey, sendTransaction } = useWallet()
+  const { publicKey, signTransaction } = useWallet()
   const { connection } = useConnection()
   const { toast } = useToast()
 
@@ -36,7 +43,7 @@ export default function CreateToken() {
   const handleCreateToken = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!publicKey) {
+    if (!publicKey || !signTransaction) {
       toast({
         title: "Wallet not connected",
         description: "Please connect your wallet to create a token",
@@ -50,153 +57,107 @@ export default function CreateToken() {
       setTransactionStatus("processing")
       setStatusMessage("Creating your token mint account...")
 
-      // Create a new mint
+      // Create a new mint keypair
       const mintKeypair = Keypair.generate()
+      console.log("Mint public key:", mintKeypair.publicKey.toString())
 
-      // Create transaction to create mint account
-      const lamports = await connection.getMinimumBalanceForRentExemption(82)
+      // Calculate the space and rent for the mint account
+      const mintSpace = 82 // Size of a mint account
+      const rentExemptionAmount = await connection.getMinimumBalanceForRentExemption(mintSpace)
 
-      const createMintTransaction = new Transaction().add(
-        SystemProgram.createAccount({
-          fromPubkey: publicKey,
-          newAccountPubkey: mintKeypair.publicKey,
-          space: 82,
-          lamports,
-          programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"), // Token program ID
-        }),
+      // Step 1: Create the mint account
+      const createMintAccountIx = SystemProgram.createAccount({
+        fromPubkey: publicKey,
+        newAccountPubkey: mintKeypair.publicKey,
+        lamports: rentExemptionAmount,
+        space: mintSpace,
+        programId: TOKEN_PROGRAM_ID,
+      })
+
+      // Step 2: Initialize the mint
+      const initializeMintIx = createInitializeMintInstruction(
+        mintKeypair.publicKey,
+        Number(decimals),
+        publicKey,
+        publicKey,
+        TOKEN_PROGRAM_ID,
       )
 
-      // Send transaction to create mint account
-      try {
-        const signature = await sendTransaction(createMintTransaction, connection, {
-          signers: [mintKeypair],
-        })
+      // Step 3: Get the associated token account address
+      const associatedTokenAddress = await getAssociatedTokenAddress(
+        mintKeypair.publicKey,
+        publicKey,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+      )
 
-        setStatusMessage("Confirming mint account creation...")
-        await connection.confirmTransaction(signature, "confirmed")
-      } catch (error) {
-        console.error("Error creating mint account:", error)
-        toast({
-          title: "Transaction failed",
-          description: "Failed to create token. Please check your wallet and try again.",
-          variant: "destructive",
-        })
-        setTransactionStatus("error")
-        setStatusMessage("Failed to create token mint account")
-        setIsLoading(false)
-        return
-      }
+      // Step 4: Create the associated token account
+      const createAssociatedTokenAccountIx = createAssociatedTokenAccountInstruction(
+        publicKey,
+        associatedTokenAddress,
+        publicKey,
+        mintKeypair.publicKey,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+      )
 
-      // Initialize the mint
-      try {
-        setStatusMessage("Initializing token mint...")
-        const signer = {
-          publicKey,
-          signTransaction: async (tx: Transaction) => {
-            return await sendTransaction(tx, connection)
-          },
-          signAllTransactions: async (txs: Transaction[]) => {
-            return txs
-          }
-        } as unknown as Signer
-
-        await createMint(
-          connection,
-          signer,
-          publicKey,
-          publicKey,
-          Number(decimals),
-          mintKeypair,
-        )
-      } catch (error) {
-        console.error("Error initializing mint:", error)
-        console.error("Error details:", {
-          publicKey: publicKey?.toString(),
-          mintKeypair: mintKeypair.publicKey.toString(),
-          decimals: Number(decimals)
-        })
-        toast({
-          title: "Transaction failed",
-          description: "Failed to initialize token. Please try again.",
-          variant: "destructive",
-        })
-        setTransactionStatus("error")
-        setStatusMessage("Failed to initialize token mint")
-        setIsLoading(false)
-        return
-      }
-
-      // Create associated token account for the user
-      let tokenAccount
-      try {
-        setStatusMessage("Creating your token account...")
-        const signer = {
-          publicKey,
-          signTransaction: async (tx: Transaction) => {
-            return await sendTransaction(tx, connection)
-          },
-          signAllTransactions: async (txs: Transaction[]) => {
-            return txs
-          }
-        } as unknown as Signer
-
-        tokenAccount = await getOrCreateAssociatedTokenAccount(
-          connection,
-          signer,
-          mintKeypair.publicKey,
-          publicKey,
-        )
-      } catch (error) {
-        console.error("Error creating token account:", error)
-        toast({
-          title: "Transaction partially completed",
-          description: "Your token was created but we couldn't create your token account.",
-          variant: "default",
-        })
-        setTransactionStatus("warning")
-        setStatusMessage("Token created but token account creation failed")
-        setCreatedTokenMint(mintKeypair.publicKey.toString())
-        setIsLoading(false)
-        return
-      }
-
-      // Mint initial supply to the user's token account
+      // Step 5: Mint tokens to the associated token account if initial supply > 0
+      let mintToIx
       if (Number(initialSupply) > 0) {
-        try {
-          setStatusMessage("Minting initial token supply...")
-          const signer = {
-            publicKey,
-            signTransaction: async (tx: Transaction) => {
-              return await sendTransaction(tx, connection)
-            },
-            signAllTransactions: async (txs: Transaction[]) => {
-              return txs
-            }
-          } as unknown as Signer
-
-          await mintTo(
-            connection,
-            signer,
-            mintKeypair.publicKey,
-            tokenAccount.address,
-            publicKey,
-            Number(initialSupply) * Math.pow(10, Number(decimals)),
-          )
-        } catch (error) {
-          console.error("Error minting initial supply:", error)
-          toast({
-            title: "Transaction partially completed",
-            description: "Token created but failed to mint initial supply. You can mint tokens later.",
-            variant: "default",
-          })
-          setTransactionStatus("warning")
-          setStatusMessage("Token created but initial supply minting failed")
-          setCreatedTokenMint(mintKeypair.publicKey.toString())
-          setIsLoading(false)
-          return
-        }
+        const mintAmount = Number(initialSupply) * Math.pow(10, Number(decimals))
+        mintToIx = createMintToInstruction(
+          mintKeypair.publicKey,
+          associatedTokenAddress,
+          publicKey,
+          BigInt(mintAmount),
+          [],
+          TOKEN_PROGRAM_ID,
+        )
       }
 
+      // Create a transaction and add all instructions
+      const transaction = new Transaction()
+      transaction.add(createMintAccountIx)
+      transaction.add(initializeMintIx)
+      transaction.add(createAssociatedTokenAccountIx)
+      if (mintToIx) {
+        transaction.add(mintToIx)
+      }
+
+      // Set the fee payer and get a recent blockhash
+      transaction.feePayer = publicKey
+      const { blockhash } = await connection.getLatestBlockhash()
+      transaction.recentBlockhash = blockhash
+
+      // Sign the transaction with the mint keypair first
+      transaction.partialSign(mintKeypair)
+
+      // Then sign with the user's wallet
+      const signedTx = await signTransaction(transaction)
+
+      // Send the fully signed transaction
+      setStatusMessage("Sending transaction...")
+      const txid = await connection.sendRawTransaction(signedTx.serialize())
+      console.log("Transaction sent:", txid)
+
+      // Confirm the transaction
+      setStatusMessage("Confirming transaction...")
+      const confirmation = await connection.confirmTransaction(txid, "confirmed")
+
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${confirmation.value.err.toString()}`)
+      }
+
+      // Verify the mint was created successfully
+      try {
+        const mintInfo = await getMint(connection, mintKeypair.publicKey)
+        console.log("Mint info:", mintInfo)
+      } catch (error) {
+        console.error("Error getting mint info:", error)
+      }
+
+      // Success!
       setCreatedTokenMint(mintKeypair.publicKey.toString())
       setTransactionStatus("success")
       setStatusMessage(`Token ${symbol || "Token"} created successfully!`)
