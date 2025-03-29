@@ -5,30 +5,26 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useWallet, useConnection } from "@solana/wallet-adapter-react"
 import {
-  getOrCreateAssociatedTokenAccount,
-  getAccount,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
   createTransferInstruction,
   TOKEN_PROGRAM_ID,
   getMint,
+  getAccount,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token"
 import { PublicKey, Transaction } from "@solana/web3.js"
 import { CardContent, CardDescription, CardHeader, CardTitle, Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, SendHorizontal, Info, ArrowRight, Copy, CheckCircle2, Coins } from "lucide-react"
+import { Loader2, SendHorizontal, Info, ArrowRight, Coins, RefreshCw } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { AnimatedButton } from "@/components/ui/animated-button"
 import { AnimatedCard } from "@/components/ui/animated-card"
 import { TransactionStatus } from "@/components/ui/transaction-status"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { Signer } from "@solana/web3.js"
 
 interface TokenInfo {
   mint: string
@@ -39,7 +35,7 @@ interface TokenInfo {
 }
 
 export default function SendToken() {
-  const { publicKey, sendTransaction } = useWallet()
+  const { publicKey, signTransaction } = useWallet()
   const { connection } = useConnection()
   const { toast } = useToast()
 
@@ -49,62 +45,98 @@ export default function SendToken() {
   const [amount, setAmount] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingTokens, setIsLoadingTokens] = useState(false)
-  const [transactionStatus, setTransactionStatus] = useState<"idle" | "processing" | "success" | "error" | "warning">("idle")
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [transactionStatus, setTransactionStatus] = useState<"idle" | "processing" | "success" | "error" | "warning">(
+    "idle",
+  )
   const [statusMessage, setStatusMessage] = useState("")
   const [copied, setCopied] = useState(false)
 
-  useEffect(() => {
-    const fetchTokens = async () => {
-      if (!publicKey) return
+  const fetchTokens = async (isRefresh = false) => {
+    if (!publicKey) return
 
-      try {
-        setIsLoadingTokens(true)
+    try {
+      isRefresh ? setIsRefreshing(true) : setIsLoadingTokens(true)
 
-        // Get all token accounts owned by the user
-        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, { programId: TOKEN_PROGRAM_ID })
+      // Get all token accounts owned by the user
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, { programId: TOKEN_PROGRAM_ID })
 
-        const tokenInfoPromises = tokenAccounts.value.map(async (tokenAccount) => {
-          const accountInfo = tokenAccount.account.data.parsed.info
-          const mintAddress = accountInfo.mint
-          const balance = accountInfo.tokenAmount.uiAmount
+      const tokenInfoPromises = tokenAccounts.value.map(async (tokenAccount) => {
+        const accountInfo = tokenAccount.account.data.parsed.info
+        const mintAddress = accountInfo.mint
+        const balance = accountInfo.tokenAmount.uiAmount
+
+        try {
+          // Get mint info to get decimals
+          const mintInfo = await getMint(connection, new PublicKey(mintAddress))
+
+          // Try to get token metadata if available
+          let name = undefined
+          let symbol = undefined
 
           try {
-            // Get mint info to get decimals
-            const mintInfo = await getMint(connection, new PublicKey(mintAddress))
-
-            return {
-              mint: mintAddress,
-              balance: balance.toString(),
-              decimals: mintInfo.decimals,
+            // This is a simplified approach - in a production app, you'd want to fetch
+            // metadata from the Metaplex Token Metadata Program
+            const tokenMetadata = await connection.getAccountInfo(new PublicKey(mintAddress))
+            if (tokenMetadata && tokenMetadata.data.length > 0) {
+              // Extract name and symbol if available
+              // This is a simplified approach and might not work for all tokens
+              const dataString = new TextDecoder().decode(tokenMetadata.data)
+              if (dataString.includes("name")) {
+                const nameMatch = dataString.match(/"name"\s*:\s*"([^"]+)"/)
+                if (nameMatch && nameMatch[1]) {
+                  name = nameMatch[1]
+                }
+              }
+              if (dataString.includes("symbol")) {
+                const symbolMatch = dataString.match(/"symbol"\s*:\s*"([^"]+)"/)
+                if (symbolMatch && symbolMatch[1]) {
+                  symbol = symbolMatch[1]
+                }
+              }
             }
           } catch (error) {
-            console.error(`Error fetching mint info for ${mintAddress}:`, error)
-            return null
+            console.log("Could not fetch token metadata:", error)
+            // Continue without metadata
           }
-        })
 
-        const tokenInfos = (await Promise.all(tokenInfoPromises)).filter((info): info is TokenInfo => info !== null)
+          return {
+            mint: mintAddress,
+            balance: balance.toString(),
+            decimals: mintInfo.decimals,
+            name,
+            symbol,
+          } as TokenInfo
+        } catch (error) {
+          console.error(`Error fetching mint info for ${mintAddress}:`, error)
+          return null
+        }
+      })
 
-        setTokens(tokenInfos)
-      } catch (error) {
-        console.error("Error fetching tokens:", error)
-        toast({
-          title: "Error fetching tokens",
-          description: "Could not retrieve your token accounts",
-          variant: "destructive",
-        })
-      } finally {
-        setIsLoadingTokens(false)
-      }
+      const tokenInfos = (await Promise.all(tokenInfoPromises)).filter((info): info is TokenInfo => info !== null)
+
+      setTokens(tokenInfos)
+    } catch (error) {
+      console.error("Error fetching tokens:", error)
+      toast({
+        title: "Error fetching tokens",
+        description: "Could not retrieve your token accounts",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingTokens(false)
+      setIsRefreshing(false)
     }
+  }
 
+  useEffect(() => {
     fetchTokens()
-  }, [publicKey, connection, toast])
+  }, [publicKey, connection])
 
   const handleSendToken = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!publicKey || !selectedToken || !recipientAddress) {
+    if (!publicKey || !signTransaction || !selectedToken || !recipientAddress || !amount) {
       toast({
         title: "Invalid input",
         description: "Please select a token, enter a recipient address, and an amount",
@@ -141,57 +173,103 @@ export default function SendToken() {
         throw new Error("Selected token not found")
       }
 
-      // Get the sender's token account
+      // Create a transaction
+      const transaction = new Transaction()
+
+      // Get the sender's token account address
       setStatusMessage("Getting your token account...")
-      const senderTokenAccount = await getOrCreateAssociatedTokenAccount(
-        connection,
-        {
-          publicKey,
-          signTransaction: async (tx: Transaction) => {
-            return await sendTransaction(tx, connection)
-          },
-          signAllTransactions: async (txs: Transaction[]) => {
-            return txs
-          }
-        } as unknown as Signer,
+      const senderTokenAddress = await getAssociatedTokenAddress(
         mintPublicKey,
         publicKey,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
       )
 
-      // Get or create the recipient's token account
-      setStatusMessage("Creating recipient token account...")
-      const recipientTokenAccount = await getOrCreateAssociatedTokenAccount(
-        connection,
-        {
-          publicKey,
-          signTransaction: async (tx: Transaction) => {
-            return await sendTransaction(tx, connection)
-          },
-          signAllTransactions: async (txs: Transaction[]) => {
-            return txs
-          }
-        } as unknown as Signer,
+      // Verify the sender's token account exists
+      try {
+        await getAccount(connection, senderTokenAddress)
+      } catch (error) {
+        toast({
+          title: "Token account not found",
+          description: "You don't have a token account for this token",
+          variant: "destructive",
+        })
+        setTransactionStatus("error")
+        setStatusMessage("Token account not found")
+        setIsLoading(false)
+        return
+      }
+
+      // Get the recipient's token account address
+      setStatusMessage("Getting recipient's token account...")
+      const recipientTokenAddress = await getAssociatedTokenAddress(
         mintPublicKey,
         recipientPublicKey,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
       )
 
+      // Check if the recipient's token account exists
+      let recipientTokenAccountExists = false
+      try {
+        await getAccount(connection, recipientTokenAddress)
+        recipientTokenAccountExists = true
+      } catch (error) {
+        // Account doesn't exist, we'll create it
+        console.log("Recipient token account doesn't exist, creating it...")
+      }
+
+      // If the recipient token account doesn't exist, add instruction to create it
+      if (!recipientTokenAccountExists) {
+        transaction.add(
+          createAssociatedTokenAccountInstruction(
+            publicKey,
+            recipientTokenAddress,
+            recipientPublicKey,
+            mintPublicKey,
+            TOKEN_PROGRAM_ID,
+            ASSOCIATED_TOKEN_PROGRAM_ID,
+          ),
+        )
+      }
+
       // Calculate amount in smallest unit
-      const amountInSmallestUnit = Number(amount) * Math.pow(10, selectedTokenInfo.decimals)
+      const amountInSmallestUnit = Math.floor(Number(amount) * Math.pow(10, selectedTokenInfo.decimals))
 
       // Create transfer instruction
       const transferInstruction = createTransferInstruction(
-        senderTokenAccount.address,
-        recipientTokenAccount.address,
+        senderTokenAddress,
+        recipientTokenAddress,
         publicKey,
         BigInt(amountInSmallestUnit),
+        [],
+        TOKEN_PROGRAM_ID,
       )
 
-      // Create and send transaction
-      setStatusMessage(`Sending ${amount} tokens...`)
-      const transaction = new Transaction().add(transferInstruction)
-      const signature = await sendTransaction(transaction, connection)
+      // Add the transfer instruction to the transaction
+      transaction.add(transferInstruction)
 
-      await connection.confirmTransaction(signature, "confirmed")
+      // Set the fee payer and get a recent blockhash
+      transaction.feePayer = publicKey
+      const { blockhash } = await connection.getLatestBlockhash()
+      transaction.recentBlockhash = blockhash
+
+      // Sign with the user's wallet
+      const signedTx = await signTransaction(transaction)
+
+      // Send the signed transaction
+      setStatusMessage(`Sending ${amount} tokens...`)
+      const signature = await connection.sendRawTransaction(signedTx.serialize())
+
+      // Confirm the transaction
+      setStatusMessage("Confirming transaction...")
+      const confirmation = await connection.confirmTransaction(signature, "confirmed")
+
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${confirmation.value.err.toString()}`)
+      }
 
       setTransactionStatus("success")
       setStatusMessage(`Successfully sent ${amount} tokens!`)
@@ -202,18 +280,7 @@ export default function SendToken() {
       })
 
       // Refresh token list to show updated balance
-      const updatedTokenAccount = await getAccount(connection, senderTokenAccount.address)
-      const updatedTokens = tokens.map((token) => {
-        if (token.mint === selectedToken) {
-          return {
-            ...token,
-            balance: (Number(updatedTokenAccount.amount) / Math.pow(10, token.decimals)).toString(),
-          }
-        }
-        return token
-      })
-
-      setTokens(updatedTokens)
+      await fetchTokens(true)
       setAmount("")
       setRecipientAddress("")
     } catch (error) {
@@ -237,6 +304,12 @@ export default function SendToken() {
     }
   }
 
+  const getTokenDisplayName = (token: TokenInfo) => {
+    if (token.name) return token.name
+    if (token.symbol) return token.symbol
+    return shortenAddress(token.mint)
+  }
+
   const shortenAddress = (address: string) => {
     return `${address.slice(0, 4)}...${address.slice(-4)}`
   }
@@ -247,7 +320,7 @@ export default function SendToken() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const selectedTokenInfo = tokens.find(token => token.mint === selectedToken)
+  const selectedTokenInfo = tokens.find((token) => token.mint === selectedToken)
 
   return (
     <TooltipProvider>
@@ -258,33 +331,51 @@ export default function SendToken() {
               <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-600 bg-clip-text text-transparent">
                 Send Tokens
               </CardTitle>
-              <div className="flex items-center space-x-2 text-sm text-gray-400">
-                <span className="px-2 py-1 rounded-full bg-purple-900/30 border border-purple-700/30">
+              <div className="flex items-center space-x-2">
+                <AnimatedButton
+                  onClick={() => fetchTokens(true)}
+                  disabled={isRefreshing || isLoading || isLoadingTokens}
+                  className="bg-black/40 hover:bg-black/60 transition-colors text-sm px-3"
+                  icon={<RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />}
+                >
+                  Refresh
+                </AnimatedButton>
+                <span className="px-2 py-1 rounded-full bg-purple-900/30 border border-purple-700/30 text-sm text-gray-400">
                   Solana Devnet
                 </span>
               </div>
             </div>
-            <CardDescription className="text-gray-400">
-              Send your SPL tokens to any Solana wallet
-            </CardDescription>
+            <CardDescription className="text-gray-400">Send your SPL tokens to any Solana wallet</CardDescription>
           </CardHeader>
 
           <CardContent>
             {transactionStatus !== "idle" && (
               <div className="mb-6">
-                <Card className={cn(
-                  "p-4 border transition-colors duration-200",
-                  transactionStatus === "processing" && "border-yellow-600/50 bg-yellow-900/10",
-                  transactionStatus === "success" && "border-green-600/50 bg-green-900/10",
-                  transactionStatus === "error" && "border-red-600/50 bg-red-900/10",
-                  transactionStatus === "warning" && "border-orange-600/50 bg-orange-900/10"
-                )}>
+                <Card
+                  className={cn(
+                    "p-4 border transition-colors duration-200",
+                    transactionStatus === "processing" && "border-yellow-600/50 bg-yellow-900/10",
+                    transactionStatus === "success" && "border-green-600/50 bg-green-900/10",
+                    transactionStatus === "error" && "border-red-600/50 bg-red-900/10",
+                    transactionStatus === "warning" && "border-orange-600/50 bg-orange-900/10",
+                  )}
+                >
                   <TransactionStatus status={transactionStatus} message={statusMessage} />
                 </Card>
               </div>
             )}
 
-            {isLoadingTokens ? (
+            {!publicKey ? (
+              <div className="text-center py-12 space-y-4 animate-in fade-in-50">
+                <div className="flex justify-center">
+                  <SendHorizontal className="h-12 w-12 text-purple-500/50" />
+                </div>
+                <div>
+                  <p className="text-gray-400 mb-2">Connect your wallet to send tokens</p>
+                  <p className="text-gray-500">You'll need to connect your wallet first</p>
+                </div>
+              </div>
+            ) : isLoadingTokens ? (
               <div className="flex flex-col items-center justify-center py-12 space-y-4">
                 <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
                 <p className="text-gray-400">Loading your tokens...</p>
@@ -299,7 +390,7 @@ export default function SendToken() {
                   <p className="text-gray-500">Create or receive tokens first to be able to send them.</p>
                 </div>
                 <AnimatedButton
-                  onClick={() => window.location.href = '/create'}
+                  onClick={() => (window.location.href = "/create")}
                   className="bg-purple-600 hover:bg-purple-700 transition-colors"
                   icon={<ArrowRight className="h-4 w-4" />}
                 >
@@ -311,7 +402,9 @@ export default function SendToken() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="token" className="text-gray-200">Select Token</Label>
+                      <Label htmlFor="token" className="text-gray-200">
+                        Select Token
+                      </Label>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger>
@@ -347,7 +440,9 @@ export default function SendToken() {
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="recipient" className="text-gray-200">Recipient Address</Label>
+                      <Label htmlFor="recipient" className="text-gray-200">
+                        Recipient Address
+                      </Label>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger>
@@ -371,7 +466,9 @@ export default function SendToken() {
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="amount" className="text-gray-200">Amount</Label>
+                      <Label htmlFor="amount" className="text-gray-200">
+                        Amount
+                      </Label>
                       <div className="flex items-center space-x-2">
                         {selectedTokenInfo && (
                           <button
@@ -407,7 +504,7 @@ export default function SendToken() {
                     />
                     {selectedTokenInfo && (
                       <p className="text-sm text-gray-400 mt-1">
-                        Balance: {selectedTokenInfo.balance} {selectedTokenInfo.symbol || 'tokens'}
+                        Balance: {selectedTokenInfo.balance} {selectedTokenInfo.symbol || "tokens"}
                       </p>
                     )}
                   </div>
@@ -422,12 +519,11 @@ export default function SendToken() {
                     loadingText="Sending Tokens..."
                     icon={<SendHorizontal className="h-4 w-4" />}
                   >
-                    {publicKey 
-                      ? (selectedToken && recipientAddress && amount 
-                        ? "Send Tokens" 
-                        : "Fill in all fields")
-                      : "Connect Wallet to Send Tokens"
-                    }
+                    {publicKey
+                      ? selectedToken && recipientAddress && amount
+                        ? "Send Tokens"
+                        : "Fill in all fields"
+                      : "Connect Wallet to Send Tokens"}
                   </AnimatedButton>
                 </div>
               </form>
