@@ -6,8 +6,7 @@ import Dashboard from "@/components/dashboard"
 import WalletContextProvider from "@/components/wallet-provider"
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Wallet, ArrowRight, ChevronDown, LogOut } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { Wallet, ChevronDown, LogOut } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -40,10 +39,6 @@ function CustomWalletButton() {
         </TooltipProvider>
         
         <div className="flex items-center gap-2">
-          <WalletMultiButton className="!bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all !rounded-xl !shadow-lg !shadow-purple-500/20 !h-10 !px-4 !py-0 flex items-center gap-2">
-            <ChevronDown className="h-4 w-4" />
-            <span className="hidden sm:inline">Switch Wallet</span>
-          </WalletMultiButton>
           <Button
             onClick={disconnect}
             variant="ghost"
@@ -59,9 +54,10 @@ function CustomWalletButton() {
   }
 
   return (
-    <WalletMultiButton className="!bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all !rounded-xl !shadow-lg !shadow-purple-500/20 !h-12 !px-6 flex items-center gap-2">
-      <Wallet className="h-5 w-5" />
-      Connect Wallet
+    <WalletMultiButton className="!bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all !rounded-xl !shadow-lg !shadow-purple-500/20 !h-10 sm:!h-12 !px-4 sm:!px-6 flex items-center gap-1 sm:gap-2 !text-sm sm:!text-base">
+      <Wallet className="h-4 w-4 sm:h-5 sm:w-5" />
+      <span className="hidden xs:inline">Connect Wallet</span>
+      <span className="xs:hidden">Connect</span>
     </WalletMultiButton>
   )
 }
