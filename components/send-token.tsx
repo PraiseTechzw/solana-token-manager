@@ -21,6 +21,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { AnimatedButton } from "@/components/ui/animated-button"
 import { AnimatedCard } from "@/components/ui/animated-card"
 import { TransactionStatus } from "@/components/ui/transaction-status"
+import { Signer } from "@solana/web3.js"
 
 interface TokenInfo {
   mint: string
@@ -137,15 +138,14 @@ export default function SendToken() {
       const senderTokenAccount = await getOrCreateAssociatedTokenAccount(
         connection,
         {
-          publicKey: publicKey,
-          secretKey: new Uint8Array(0),
-          signTransaction: async (tx) => {
+          publicKey,
+          signTransaction: async (tx: Transaction) => {
             return await sendTransaction(tx, connection)
           },
-          signAllTransactions: async (txs) => {
+          signAllTransactions: async (txs: Transaction[]) => {
             return txs
-          },
-        },
+          }
+        } as unknown as Signer,
         mintPublicKey,
         publicKey,
       )
@@ -155,15 +155,14 @@ export default function SendToken() {
       const recipientTokenAccount = await getOrCreateAssociatedTokenAccount(
         connection,
         {
-          publicKey: publicKey,
-          secretKey: new Uint8Array(0),
-          signTransaction: async (tx) => {
+          publicKey,
+          signTransaction: async (tx: Transaction) => {
             return await sendTransaction(tx, connection)
           },
-          signAllTransactions: async (txs) => {
+          signAllTransactions: async (txs: Transaction[]) => {
             return txs
-          },
-        },
+          }
+        } as unknown as Signer,
         mintPublicKey,
         recipientPublicKey,
       )

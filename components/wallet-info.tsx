@@ -9,6 +9,7 @@ import { LAMPORTS_PER_SOL } from "@solana/web3.js"
 import { useState } from "react"
 import { AnimatedCard } from "@/components/ui/animated-card"
 import { AnimatedButton } from "@/components/ui/animated-button"
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui"
 
 interface WalletInfoProps {
   balance: number | null
@@ -116,15 +117,21 @@ export default function WalletInfo({ balance, isLoading }: WalletInfoProps) {
             </div>
 
             <div className="flex flex-col gap-2">
-              <AnimatedButton
-                variant="outline"
-                size="sm"
-                className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                onClick={handleDisconnect}
-                icon={<LogOut className="h-3 w-3" />}
-              >
-                Disconnect
-              </AnimatedButton>
+              <div className="flex gap-2">
+                <AnimatedButton
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  onClick={handleDisconnect}
+                  icon={<LogOut className="h-3 w-3" />}
+                >
+                  Disconnect
+                </AnimatedButton>
+
+                <WalletMultiButton className="!bg-purple-600 hover:!bg-purple-700 transition-colors !rounded-lg !shadow-lg !shadow-purple-500/20 !h-9 !px-3 !py-0 !text-sm">
+                  Switch Wallet
+                </WalletMultiButton>
+              </div>
 
               <AnimatedButton
                 variant="outline"

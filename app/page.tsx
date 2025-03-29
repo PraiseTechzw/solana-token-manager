@@ -9,15 +9,45 @@ import { motion } from "framer-motion"
 
 // Custom wallet button component
 function CustomWalletButton() {
-  const { connected } = useWallet()
+  const { connected, publicKey, disconnect } = useWallet()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
 
   if (!mounted) return null
 
+  if (connected && publicKey) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5">
+          <div className="w-2 h-2 rounded-full bg-green-500"></div>
+          <span className="text-sm text-gray-300">
+            {publicKey.toString().slice(0, 4)}...{publicKey.toString().slice(-4)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <WalletMultiButton className="!bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all !rounded-xl !shadow-lg !shadow-purple-500/20 !h-10 !px-4 !py-0 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+            Switch Wallet
+          </WalletMultiButton>
+          <button
+            onClick={disconnect}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition-all text-sm text-gray-300 hover:text-white"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Disconnect
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <WalletMultiButton className="!bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all !rounded-xl !shadow-lg !shadow-purple-500/20 !h-12 !px-6">
-      {connected ? "Change Wallet" : "Connect Wallet"}
+      Connect Wallet
     </WalletMultiButton>
   )
 }
@@ -81,7 +111,7 @@ export default function Home() {
 }
 
 function AppContent() {
-  const { connected } = useWallet()
+  const { connected, publicKey, disconnect } = useWallet()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
 
@@ -130,6 +160,45 @@ function AppContent() {
     )
   }
 
-  return <Dashboard />
+  return (
+    <div>
+      <motion.div
+        className="mb-8 p-6 rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <div>
+            <h2 className="text-xl font-semibold mb-2">Wallet Details</h2>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+              <p className="text-gray-300">
+                Connected: <span className="font-mono">{publicKey?.toString().slice(0, 12)}...{publicKey?.toString().slice(-8)}</span>
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <WalletMultiButton className="!bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all !rounded-xl !shadow-lg !shadow-purple-500/20 !h-10 !px-4 !py-0 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+              Change Wallet
+            </WalletMultiButton>
+            <button
+              onClick={disconnect}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 transition-all text-red-400 hover:text-red-300"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Disconnect
+            </button>
+          </div>
+        </div>
+      </motion.div>
+      <Dashboard />
+    </div>
+  )
 }
 

@@ -5,6 +5,7 @@ import { useState } from "react"
 import { useWallet, useConnection } from "@solana/wallet-adapter-react"
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token"
 import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js"
+import { Signer } from "@solana/web3.js"
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -89,26 +90,31 @@ export default function CreateToken() {
       // Initialize the mint
       try {
         setStatusMessage("Initializing token mint...")
+        const signer = {
+          publicKey,
+          signTransaction: async (tx: Transaction) => {
+            return await sendTransaction(tx, connection)
+          },
+          signAllTransactions: async (txs: Transaction[]) => {
+            return txs
+          }
+        } as unknown as Signer
+
         await createMint(
           connection,
-          {
-            publicKey: publicKey,
-            secretKey: new Uint8Array(0), // This is a dummy, as we're using the wallet adapter
-            signTransaction: async (tx) => {
-              return await sendTransaction(tx, connection)
-            },
-            signAllTransactions: async (txs) => {
-              // This won't be used in this case
-              return txs
-            },
-          },
+          signer,
           publicKey,
           publicKey,
           Number(decimals),
-          mintKeypair.publicKey,
+          mintKeypair,
         )
       } catch (error) {
         console.error("Error initializing mint:", error)
+        console.error("Error details:", {
+          publicKey: publicKey?.toString(),
+          mintKeypair: mintKeypair.publicKey.toString(),
+          decimals: Number(decimals)
+        })
         toast({
           title: "Transaction failed",
           description: "Failed to initialize token. Please try again.",
@@ -124,18 +130,19 @@ export default function CreateToken() {
       let tokenAccount
       try {
         setStatusMessage("Creating your token account...")
+        const signer = {
+          publicKey,
+          signTransaction: async (tx: Transaction) => {
+            return await sendTransaction(tx, connection)
+          },
+          signAllTransactions: async (txs: Transaction[]) => {
+            return txs
+          }
+        } as unknown as Signer
+
         tokenAccount = await getOrCreateAssociatedTokenAccount(
           connection,
-          {
-            publicKey: publicKey,
-            secretKey: new Uint8Array(0),
-            signTransaction: async (tx) => {
-              return await sendTransaction(tx, connection)
-            },
-            signAllTransactions: async (txs) => {
-              return txs
-            },
-          },
+          signer,
           mintKeypair.publicKey,
           publicKey,
         )
@@ -157,18 +164,19 @@ export default function CreateToken() {
       if (Number(initialSupply) > 0) {
         try {
           setStatusMessage("Minting initial token supply...")
+          const signer = {
+            publicKey,
+            signTransaction: async (tx: Transaction) => {
+              return await sendTransaction(tx, connection)
+            },
+            signAllTransactions: async (txs: Transaction[]) => {
+              return txs
+            }
+          } as unknown as Signer
+
           await mintTo(
             connection,
-            {
-              publicKey: publicKey,
-              secretKey: new Uint8Array(0),
-              signTransaction: async (tx) => {
-                return await sendTransaction(tx, connection)
-              },
-              signAllTransactions: async (txs) => {
-                return txs
-              },
-            },
+            signer,
             mintKeypair.publicKey,
             tokenAccount.address,
             publicKey,

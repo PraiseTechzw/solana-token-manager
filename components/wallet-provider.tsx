@@ -9,8 +9,6 @@ import {
   CoinbaseWalletAdapter,
   LedgerWalletAdapter,
   TorusWalletAdapter,
-  CloverWalletAdapter,
-  AvanaWalletAdapter,
 } from "@solana/wallet-adapter-wallets"
 import { clusterApiUrl } from "@solana/web3.js"
 import { type ReactNode, useMemo, useState, useEffect } from "react"
@@ -35,8 +33,6 @@ export default function WalletContextProvider({ children }: { children: ReactNod
       new CoinbaseWalletAdapter(),
       new LedgerWalletAdapter(),
       new TorusWalletAdapter(),
-      new CloverWalletAdapter(),
-      new AvanaWalletAdapter(),
     ],
     [network],
   )
